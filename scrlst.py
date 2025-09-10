@@ -199,7 +199,8 @@ def create_thumbnail(video_path: Path, output_path: Path) -> None:
                 img = img.convert("RGB")
                 img = img.resize((THUMB_WIDTH, int(THUMB_WIDTH * img.height / img.width)))
                 draw = ImageDraw.Draw(img)
-                draw.text((5, 5), ts_str, fill="white")
+                text_color = get_contrast_text_color(BG_COLOR)
+                draw.text((5, 5), ts_str, fill=text_color)
                 images.append(img)
 
     if not images:
@@ -220,7 +221,8 @@ def create_thumbnail(video_path: Path, output_path: Path) -> None:
         font = ImageFont.truetype("arial.ttf", FONT_SIZE)
     except:
         font = ImageFont.load_default()
-    draw.text((PADDING, PADDING), header_text, fill="white", font=font)
+    text_color = get_contrast_text_color(BG_COLOR)
+    draw.text((PADDING, PADDING), header_text, fill=text_color, font=font)
 
     # --- Вставка миниатюр ---
     for idx, img in enumerate(images):
@@ -232,6 +234,13 @@ def create_thumbnail(video_path: Path, output_path: Path) -> None:
     sheet.save(output_path, "JPEG", quality=90)
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
+
+def get_contrast_text_color(bg_color: str) -> str:
+    # Простое правило: для светлого фона — черный текст, для темного — белый
+    light_colors = {"white", "yellow", "gray", "grey", "orange", "pink"}
+    if bg_color in light_colors:
+        return "black"
+    return "white"
 
 def main():
     global THUMBS_PER_ROW, THUMBS_PER_COL, THUMB_WIDTH, OVERWRITE, BG_COLOR
