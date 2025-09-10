@@ -7,8 +7,6 @@ import math
 import shutil
 from pathlib import Path
 from datetime import timedelta
-
-# --- Новый импорт вместо pkg_resources ---
 from packaging.version import parse as parse_version
 from importlib.metadata import PackageNotFoundError, version as get_version
 
@@ -27,6 +25,21 @@ FONT_SIZE = 20
 #   0  = создавать новый файл с индексом (_1, _2, ...) если имя занято
 #  -1  = если файл уже существует, пропускать этот видеофайл
 OVERWRITE = 0
+
+# Если ffmpeg и ffprobe отсутствуют - выход, они обязательны
+script_dir = Path(__file__).parent.resolve()
+for tool in ["ffmpeg", "ffprobe"]:
+    exe_name = tool + ".exe" if os.name == "nt" else tool
+    tool_path = shutil.which(tool)
+    local_path = script_dir / exe_name
+    if tool_path:
+        continue
+    elif local_path.exists():
+        # Добавляем папку скрипта в PATH на время работы
+        os.environ["PATH"] = str(script_dir) + os.pathsep + os.environ.get("PATH", "")
+    else:
+        print(f"[!] Требуется {tool} в PATH или рядом со скриптом ({exe_name}).")
+        sys.exit(1)
 
 # --- Универсальный импорт и автообновление внешних модулей ---
 def import_or_update(module_name, pypi_name=None, min_version=None, force_check=False):
@@ -80,15 +93,12 @@ def import_or_update(module_name, pypi_name=None, min_version=None, force_check=
         subprocess.check_call([sys.executable, "-m", "pip", "install", pypi_name])
         return importlib.import_module(module_name)
 
-
 # --- Импорт Pillow через наш автообновлятор ---
 PIL = import_or_update("PIL", "pillow", force_check=True)
 from PIL import Image, ImageDraw, ImageFont
 
-
-def run_ffprobe(video_path):
+def run_ffprobe(video_path: Path) -> tuple[int | None, int | None, float | None]:
     """Получить метаданные видео через ffprobe."""
-    # Получаем ширину/высоту и duration потока
     cmd_stream = [
         "ffprobe", "-v", "error",
         "-select_streams", "v:0",
@@ -96,7 +106,11 @@ def run_ffprobe(video_path):
         "-of", "default=noprint_wrappers=1:nokey=1",
         str(video_path)
     ]
-    out = subprocess.check_output(cmd_stream, stderr=subprocess.DEVNULL).decode().strip().split("\n")
+    try:
+        out = subprocess.check_output(cmd_stream, stderr=subprocess.DEVNULL).decode().strip().split("\n")
+    except subprocess.CalledProcessError as e:
+        print(f"[!] ffprobe не удалось выполнить для {video_path}: {e}")
+        return None, None, None
 
     width = height = dur = None
     if len(out) >= 3:
@@ -126,11 +140,12 @@ def run_ffprobe(video_path):
 
     return width, height, dur
 
-def format_size(bytes_size):
+def format_size(bytes_size: float) -> str:
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if bytes_size < 1024:
             return f"{bytes_size:.1f} {unit}"
         bytes_size /= 1024
+    return f"{bytes_size:.1f} PB"
 
 def resolve_output_path(base_path: Path) -> Path | None:
     """
@@ -148,11 +163,11 @@ def resolve_output_path(base_path: Path) -> Path | None:
         candidate = base_path
         idx = 1
         while candidate.exists():
-            candidate = base_path.with_stem(f"{base_path.stem}_{idx}")
+            candidate = candidate.with_stem(f"{base_path.stem}_{idx}")
             idx += 1
         return candidate
 
-def create_thumbnail(video_path, output_path):
+def create_thumbnail(video_path: Path, output_path: Path) -> None:
     """Создать скринлист для видео."""
     width, height, duration = run_ffprobe(video_path)
     if not duration:
@@ -174,13 +189,17 @@ def create_thumbnail(video_path, output_path):
             "ffmpeg", "-ss", str(ts), "-i", str(video_path),
             "-frames:v", "1", "-q:v", "2", "-y", str(img_file)
         ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result.returncode != 0:
+            print(f"[!] ffmpeg не удалось извлечь кадр {i} для {video_path}")
+            continue
         if img_file.exists():
-            img = Image.open(img_file).convert("RGB")
-            img = img.resize((THUMB_WIDTH, int(THUMB_WIDTH * img.height / img.width)))
-            draw = ImageDraw.Draw(img)
-            draw.text((5, 5), ts_str, fill="white")
-            images.append(img)
+            with Image.open(img_file) as img:
+                img = img.convert("RGB")
+                img = img.resize((THUMB_WIDTH, int(THUMB_WIDTH * img.height / img.width)))
+                draw = ImageDraw.Draw(img)
+                draw.text((5, 5), ts_str, fill="white")
+                images.append(img)
 
     if not images:
         print(f"[!] Не удалось извлечь кадры из {video_path}")
@@ -210,13 +229,13 @@ def create_thumbnail(video_path, output_path):
         sheet.paste(img, (x, y))
 
     sheet.save(output_path, "JPEG", quality=90)
-    shutil.rmtree(temp_dir)
-
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
 
 def main():
     folder = Path(".")
     for file in folder.iterdir():
-        if file.suffix.lower() in VIDEO_EXTS:
+        if file.is_file() and file.suffix.lower() in VIDEO_EXTS:
             out_file = file.with_suffix(".jpg")
             resolved = resolve_output_path(out_file)
             if not resolved:
