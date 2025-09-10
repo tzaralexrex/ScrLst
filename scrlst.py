@@ -233,15 +233,49 @@ def create_thumbnail(video_path: Path, output_path: Path) -> None:
         shutil.rmtree(temp_dir)
 
 def main():
-    folder = Path(".")
-    for file in folder.iterdir():
-        if file.is_file() and file.suffix.lower() in VIDEO_EXTS:
-            out_file = file.with_suffix(".jpg")
-            resolved = resolve_output_path(out_file)
-            if not resolved:
-                continue  # пропуск по правилу OVERWRITE
-            print(f"[+] Обрабатываю {file.name} → {resolved.name}")
-            create_thumbnail(file, resolved)
+    args = sys.argv[1:]
+    recursive = False
+    file_arg = None
+
+    # Проверяем аргументы командной строки
+    for arg in args:
+        if arg in ("-r", "--recursive"):
+            recursive = True
+        elif not arg.startswith("-"):
+            file_arg = arg
+
+    if file_arg:
+        if recursive:
+            print("[!] Ключ -r (или --recursive) игнорируется при обработке одного файла.")
+        # Обработка одного файла, имя передано в командной строке
+        file = Path(file_arg)
+        if not file.exists() or not file.is_file():
+            print(f"[!] Файл {file} не найден.")
+            return
+        if file.suffix.lower() not in VIDEO_EXTS:
+            print(f"[!] Файл {file} не является поддерживаемым видео.")
+            return
+        out_file = file.with_suffix(".jpg")
+        resolved = resolve_output_path(out_file)
+        if not resolved:
+            return  # пропуск по правилу OVERWRITE
+        print(f"[+] Обрабатываю {file.name} → {resolved.name}")
+        create_thumbnail(file, resolved)
+    else:
+        # Обработка всех файлов в папке (и подпапках, если recursive)
+        folder = Path(".")
+        if recursive:
+            files = folder.rglob("*")
+        else:
+            files = folder.iterdir()
+        for file in files:
+            if file.is_file() and file.suffix.lower() in VIDEO_EXTS:
+                out_file = file.with_suffix(".jpg")
+                resolved = resolve_output_path(out_file)
+                if not resolved:
+                    continue  # пропуск по правилу OVERWRITE
+                print(f"[+] Обрабатываю {file.relative_to(folder)} → {resolved.name}")
+                create_thumbnail(file, resolved)
 
 if __name__ == "__main__":
     main()
