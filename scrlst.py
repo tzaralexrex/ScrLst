@@ -19,6 +19,7 @@ THUMB_WIDTH = 320
 PADDING = 10
 HEADER_HEIGHT = 60
 FONT_SIZE = 20
+BG_COLOR = "black"
 
 # Режим обработки существующих скринлистов:
 #   1  = всегда перезаписывать старый файл
@@ -209,7 +210,7 @@ def create_thumbnail(video_path: Path, output_path: Path) -> None:
     total_w = THUMBS_PER_ROW * THUMB_WIDTH + (THUMBS_PER_ROW+1) * PADDING
     total_h = HEADER_HEIGHT + THUMBS_PER_COL * thumb_h + (THUMBS_PER_COL+1) * PADDING
 
-    sheet = Image.new("RGB", (total_w, total_h), "black")
+    sheet = Image.new("RGB", (total_w, total_h), BG_COLOR)
     draw = ImageDraw.Draw(sheet)
 
     # --- Шапка ---
@@ -233,12 +234,17 @@ def create_thumbnail(video_path: Path, output_path: Path) -> None:
         shutil.rmtree(temp_dir)
 
 def main():
-    global THUMBS_PER_ROW, THUMBS_PER_COL, THUMB_WIDTH, OVERWRITE
+    global THUMBS_PER_ROW, THUMBS_PER_COL, THUMB_WIDTH, OVERWRITE, BG_COLOR
 
     args = sys.argv[1:]
     recursive = False
     file_arg = None
     skip_next = False
+
+    # Список допустимых цветов для Pillow
+    allowed_colors = {
+        "black", "white", "yellow", "blue", "red", "green", "gray", "grey", "orange", "purple", "pink", "brown", "cyan", "magenta"
+    }
 
     # Проверяем аргументы командной строки
     for i, arg in enumerate(args):
@@ -265,6 +271,14 @@ def main():
                 skip_next = True
             except ValueError:
                 print("[!] Некорректное значение для -width")
+        elif arg == "-bg" and i + 1 < len(args):
+            color = args[i + 1].lower()
+            if color in allowed_colors:
+                BG_COLOR = color
+            else:
+                print(f"[!] Цвет '{color}' не распознан, используется белый фон.")
+                BG_COLOR = "white"
+            skip_next = True
         elif arg == "-over":
             OVERWRITE = 1
         elif arg == "-new":
