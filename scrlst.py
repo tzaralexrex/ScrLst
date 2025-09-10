@@ -233,14 +233,44 @@ def create_thumbnail(video_path: Path, output_path: Path) -> None:
         shutil.rmtree(temp_dir)
 
 def main():
+    global THUMBS_PER_ROW, THUMBS_PER_COL, THUMB_WIDTH, OVERWRITE
+
     args = sys.argv[1:]
     recursive = False
     file_arg = None
+    skip_next = False
 
     # Проверяем аргументы командной строки
-    for arg in args:
+    for i, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
         if arg in ("-r", "--recursive"):
             recursive = True
+        elif arg == "-row" and i + 1 < len(args):
+            try:
+                THUMBS_PER_ROW = int(args[i + 1])
+                skip_next = True
+            except ValueError:
+                print("[!] Некорректное значение для -row")
+        elif arg == "-col" and i + 1 < len(args):
+            try:
+                THUMBS_PER_COL = int(args[i + 1])
+                skip_next = True
+            except ValueError:
+                print("[!] Некорректное значение для -col")
+        elif arg == "-width" and i + 1 < len(args):
+            try:
+                THUMB_WIDTH = int(args[i + 1])
+                skip_next = True
+            except ValueError:
+                print("[!] Некорректное значение для -width")
+        elif arg == "-over":
+            OVERWRITE = 1
+        elif arg == "-new":
+            OVERWRITE = 0
+        elif arg == "-skip":
+            OVERWRITE = -1
         elif not arg.startswith("-"):
             file_arg = arg
 
